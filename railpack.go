@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -16,7 +17,12 @@ import (
 // does not produce a Dockerfile; the actual build is driven by the railpack
 // frontend image inside BuildKit (see buildkit.go).
 func GenerateBuild(ctx context.Context, srcDir string, log *zap.Logger) error {
-	cmd := exec.CommandContext(ctx, "/usr/local/bin/railpack", "plan", "--out", filepath.Join(srcDir, "railpack-plan.json"), srcDir)
+	railpackPath, err := exec.LookPath("railpack")
+	if err != nil {
+		return fmt.Errorf("railpack not found in PATH=%q: %w", os.Getenv("PATH"), err)
+	}
+
+	cmd := exec.CommandContext(ctx, railpackPath, "plan", "--out", filepath.Join(srcDir, "railpack-plan.json"), srcDir)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

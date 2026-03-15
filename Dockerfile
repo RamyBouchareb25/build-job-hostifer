@@ -14,12 +14,11 @@ RUN go build -o /hostifer-builder .
 FROM alpine:3.19
 
 # git is required by git.go (shelled out via os/exec).
-RUN apk add --no-cache git
+RUN apk add --no-cache bash ca-certificates curl git tar
 
 # Download the Railpack CLI for linux/amd64.
-RUN wget -qO /usr/local/bin/railpack \
-  https://github.com/railwayapp/railpack/releases/latest/download/railpack-linux-amd64 \
-  && chmod +x /usr/local/bin/railpack
+RUN curl -fsSL https://railpack.com/install.sh | bash -s -- --yes --bin-dir /usr/local/bin \
+    && test -x /usr/local/bin/railpack
 
 # Copy the compiled builder binary from Stage 1.
 COPY --from=builder /hostifer-builder /hostifer-builder

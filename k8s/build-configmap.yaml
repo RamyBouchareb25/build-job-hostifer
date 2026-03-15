@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: build-config
+data:
+  REPO_URL: "https://github.com/gothinkster/node-express-realworld-example-app"
+  IMAGE_NAME: "registry.kube-system.svc.cluster.local:5000/express-test:v1"
+  BUILDKIT_HOST: "tcp://buildkitd.hostifer-system.svc.cluster.local:1234"
+  BUILD_ID: "1"
+  TENANT_ID: "express-1"

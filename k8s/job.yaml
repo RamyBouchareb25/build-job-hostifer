@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hostifer-build-1
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: hostifer-build
+        build-id: "1"
+        tenant-id: express-1
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: ghcr-login-secret
+      containers:
+        - name: builder
+          image: ghcr.io/ramybouchareb25/hostifer-build:latest
+          envFrom:
+            - configMapRef:
+                name: build-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
