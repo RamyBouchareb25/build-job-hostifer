@@ -1,26 +1,21 @@
-# ─── Stage 1: Build the Go binary ────────────────────────────────────────────
 FROM golang:1.22-alpine AS builder
-
-WORKDIR /src
-
-# Download dependencies first so this layer is cached unless go.mod/go.sum change.
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY *.go ./
+WORKDIR /app
+COPY . .
 RUN go build -o /hostifer-builder .
 
-# ─── Stage 2: Minimal runtime image ──────────────────────────────────────────
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
-# git is required by git.go (shelled out via os/exec).
-RUN apk add --no-cache bash ca-certificates curl git tar
+RUN apt-get update && apt-get install -y \
+    git \
+    ca-certificates \
+    curl \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-# Download the Railpack CLI for linux/amd64.
-RUN curl -fsSL https://railpack.com/install.sh | bash -s -- --yes --bin-dir /usr/local/bin \
+RUN curl -fsSL https://railpack.com/install.sh | RAILPACK_VERSION=${RAILPACK_VERSION} bash -s -- --yes --bin-dir /usr/local/bin \
+    && railpack --version \
     && test -x /usr/local/bin/railpack
 
-# Copy the compiled builder binary from Stage 1.
-COPY --from=builder /hostifer-builder /hostifer-builder
+COPY --from=builder /hostifer-builder /usr/local/bin/hostifer-builder
 
-ENTRYPOINT ["/hostifer-builder"]
+ENTRYPOINT ["/usr/local/bin/hostifer-builder"]

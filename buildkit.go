@@ -71,7 +71,8 @@ func BuildAndPush(ctx context.Context, buildkitHost, contextDir, imageName strin
 		// "source" is the frontend image; buildkit pulls it and runs it as an LLB frontend.
 		Frontend: "gateway.v0",
 		FrontendAttrs: map[string]string{
-			"source": "ghcr.io/railwayapp/railpack-frontend:v0.18.0",
+			"source":   railpackFrontendImage(),
+			"filename": railpackPlanFileName,
 		},
 		LocalDirs: map[string]string{
 			"dockerfile": contextDir,
@@ -95,6 +96,7 @@ func BuildAndPush(ctx context.Context, buildkitHost, contextDir, imageName strin
 	// Log which registry we are targeting so the Next.js backend can correlate.
 	log.Info("pushing image",
 		zap.String("stream", "buildkit"),
+		zap.String("frontend", railpackFrontendImage()),
 		zap.String("registry", registryHost),
 		zap.String("image", imageName),
 	)

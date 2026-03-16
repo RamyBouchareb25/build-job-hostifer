@@ -2,66 +2,125 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
+	"strings"
 
 	"go.uber.org/zap"
 )
 
-// GenerateBuild runs `railpack plan` against srcDir to detect the framework
-// and log the build plan. Railpack v0.18+ is a BuildKit gateway frontend and
-// does not produce a Dockerfile; the actual build is driven by the railpack
-// frontend image inside BuildKit (see buildkit.go).
+const (
+	defaultRailpackVersion = "0.18.0"
+	railpackPlanFileName   = "railpack-plan.json"
+	railpackInfoFileName   = "railpack-info.json"
+	maxRailpackOutputBytes = 4 * 1024
+)
+
+func railpackVersion() string {
+	version := os.Getenv("RAILPACK_VERSION")
+	if version == "" {
+		return defaultRailpackVersion
+	}
+
+	return version
+}
+
+func railpackFrontendImage() string {
+	return fmt.Sprintf("ghcr.io/railwayapp/railpack-frontend:v%s", railpackVersion())
+}
+
+// GenerateBuild runs `railpack prepare` against srcDir to generate the
+// railpack plan consumed by the BuildKit frontend. The plan and info files are
+// written into the build context so BuildKit can load them from the dockerfile
+// local mount.
 func GenerateBuild(ctx context.Context, srcDir string, log *zap.Logger) error {
 	railpackPath, err := exec.LookPath("railpack")
 	if err != nil {
 		return fmt.Errorf("railpack not found in PATH=%q: %w", os.Getenv("PATH"), err)
 	}
 
-	cmd := exec.CommandContext(ctx, railpackPath, "plan", "--out", filepath.Join(srcDir, "railpack-plan.json"), srcDir)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("railpack stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("railpack stderr pipe: %w", err)
+	args := []string{
+		"prepare",
+		"--plan-out", filepath.Join(srcDir, railpackPlanFileName),
+		"--info-out", filepath.Join(srcDir, railpackInfoFileName),
+		"--hide-pretty-plan",
+		srcDir,
 	}
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("railpack start: %w", err)
+	err = runRailpack(ctx, railpackPath, args, log)
+	if err == nil {
+		return nil
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+	if strings.Contains(err.Error(), "--hide-pretty-plan") {
+		log.Warn("railpack does not support --hide-pretty-plan, retrying without it",
+			zap.String("stream", "railpack"),
+		)
 
-	go func() {
-		defer wg.Done()
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			log.Info(scanner.Text(), zap.String("stream", "railpack"))
+		fallbackArgs := []string{
+			"prepare",
+			"--plan-out", filepath.Join(srcDir, railpackPlanFileName),
+			"--info-out", filepath.Join(srcDir, railpackInfoFileName),
+			srcDir,
 		}
-	}()
 
-	go func() {
-		defer wg.Done()
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			log.Info(scanner.Text(), zap.String("stream", "railpack"))
+		if fallbackErr := runRailpack(ctx, railpackPath, fallbackArgs, log); fallbackErr != nil {
+			return fallbackErr
 		}
-	}()
 
-	waitErr := cmd.Wait()
-	wg.Wait()
+		return nil
+	}
 
-	if waitErr != nil {
-		return fmt.Errorf("railpack plan: %w", waitErr)
+	return err
+}
+
+func runRailpack(ctx context.Context, railpackPath string, args []string, log *zap.Logger) error {
+	cmd := exec.CommandContext(ctx, railpackPath, args...)
+
+	output, err := cmd.CombinedOutput()
+	logRailpackOutput(output, log)
+
+	if err != nil {
+		trimmedOutput := strings.TrimSpace(string(output))
+		if trimmedOutput == "" {
+			return fmt.Errorf("railpack prepare: %w", err)
+		}
+
+		if len(trimmedOutput) > maxRailpackOutputBytes {
+			trimmedOutput = trimmedOutput[:maxRailpackOutputBytes] + "..."
+		}
+
+		return fmt.Errorf("railpack prepare: %w: %s", err, trimmedOutput)
 	}
 
 	return nil
+}
+
+func logRailpackOutput(output []byte, log *zap.Logger) {
+	if len(output) == 0 {
+		return
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	// Railpack occasionally emits very long lines; increase the scanner token cap.
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+	for scanner.Scan() {
+		text := strings.TrimSpace(scanner.Text())
+		if text == "" {
+			continue
+		}
+		log.Info(text, zap.String("stream", "railpack"))
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Warn("failed reading railpack output",
+			zap.String("stream", "railpack"),
+			zap.Error(err),
+		)
+	}
 }
