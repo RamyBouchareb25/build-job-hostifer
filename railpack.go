@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,6 +54,10 @@ func GenerateBuild(ctx context.Context, srcDir string, log *zap.Logger) error {
 
 	err = runRailpack(ctx, railpackPath, args, log)
 	if err == nil {
+		if err := patchRailpackPlanRunAsUser(srcDir, log); err != nil {
+			return err
+		}
+
 		return nil
 	}
 
@@ -70,6 +75,10 @@ func GenerateBuild(ctx context.Context, srcDir string, log *zap.Logger) error {
 
 		if fallbackErr := runRailpack(ctx, railpackPath, fallbackArgs, log); fallbackErr != nil {
 			return fallbackErr
+		}
+
+		if err := patchRailpackPlanRunAsUser(srcDir, log); err != nil {
+			return err
 		}
 
 		return nil
@@ -123,4 +132,78 @@ func logRailpackOutput(output []byte, log *zap.Logger) {
 			zap.Error(err),
 		)
 	}
+}
+
+func patchRailpackPlanRunAsUser(srcDir string, log *zap.Logger) error {
+	planPath := filepath.Join(srcDir, railpackPlanFileName)
+	log.Info("patching railpack plan to run as uid 1000",
+		zap.String("stream", "railpack"),
+		zap.String("path", planPath),
+	)
+
+	planBytes, err := os.ReadFile(planPath)
+	if err != nil {
+		return fmt.Errorf("read railpack plan: %w", err)
+	}
+
+	var plan map[string]interface{}
+	if err := json.Unmarshal(planBytes, &plan); err != nil {
+		return fmt.Errorf("parse railpack plan: %w", err)
+	}
+
+	deploy, ok := plan["deploy"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("patch railpack plan: missing or invalid deploy section")
+	}
+	deploy["user"] = "1000"
+
+	steps, ok := plan["steps"].([]interface{})
+	if !ok {
+		return fmt.Errorf("patch railpack plan: missing or invalid steps section")
+	}
+
+	buildStepFound := false
+	for _, s := range steps {
+		step, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		name, _ := step["name"].(string)
+		if name != "build" {
+			continue
+		}
+
+		cmds, ok := step["commands"].([]interface{})
+		if !ok {
+			return fmt.Errorf("patch railpack plan: build step missing or invalid commands")
+		}
+
+		step["commands"] = append(cmds, map[string]interface{}{
+			"cmd":        "chown -R 1000:1000 /app",
+			"customName": "set ownership to uid 1000",
+		})
+		buildStepFound = true
+		break
+	}
+
+	if !buildStepFound {
+		return fmt.Errorf("patch railpack plan: build step not found")
+	}
+
+	patched, err := json.Marshal(plan)
+	if err != nil {
+		return fmt.Errorf("marshal patched plan: %w", err)
+	}
+
+	if err := os.WriteFile(planPath, patched, 0644); err != nil {
+		return fmt.Errorf("write patched plan: %w", err)
+	}
+
+	log.Info("patched railpack plan",
+		zap.String("stream", "railpack"),
+		zap.String("path", planPath),
+	)
+
+	return nil
 }

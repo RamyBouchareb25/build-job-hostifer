@@ -15,6 +15,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
+import "regexp"
+
 
 // BuildAndPush connects to the buildkit daemon, builds the image using the
 // railpack BuildKit gateway frontend, and pushes it to imageName.
@@ -52,17 +54,41 @@ func BuildAndPush(ctx context.Context, buildkitHost, contextDir, imageName strin
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
-		for status := range ch {
-			for _, v := range status.Vertexes {
-				if v.Name != "" {
-					log.Info(v.Name, zap.String("stream", "buildkit"))
-				}
-			}
-		}
-	}()
+    defer wg.Done()
+    for status := range ch {
+        // step names / phase changes
+        for _, v := range status.Vertexes {
+            if v.Name != "" && !v.Cached {
+                log.Info("▶ "+v.Name,
+                    zap.String("stream", "buildkit"),
+                    zap.String("phase", vertexPhase(v)),
+                )
+            }
+        }
+        // actual command output — npm logs, apt output, etc.
+        for _, l := range status.Logs {
+            lines := strings.Split(strings.TrimRight(string(l.Data), "\n"), "\n")
+            for _, line := range lines {
+                line = strings.TrimSpace(line)
+                if line == "" {
+                    continue
+                }
+                // strip ANSI escape codes so logs render cleanly
+                clean := stripANSI(line)
+                streamName := "stdout"
+                if l.Stream == 2 {
+                    streamName = "stderr"
+                }
+                log.Info(clean,
+                    zap.String("stream", "buildkit:"+streamName),
+                )
+            }
+        }
+    }
+}()
 
 	solveOpt := client.SolveOpt{
+		
 		// Forward host Docker credentials so BuildKit can push.
 		Session: []session.Attachable{
 			authprovider.NewDockerAuthProvider(config.LoadDefaultConfigFile(os.Stderr), nil),
@@ -73,6 +99,7 @@ func BuildAndPush(ctx context.Context, buildkitHost, contextDir, imageName strin
 		FrontendAttrs: map[string]string{
 			"source":   railpackFrontendImage(),
 			"filename": railpackPlanFileName,
+			"no-cache": "true",  // optional: disable layer cache for fresh output
 		},
 		LocalDirs: map[string]string{
 			"dockerfile": contextDir,
@@ -109,4 +136,23 @@ func BuildAndPush(ctx context.Context, buildkitHost, contextDir, imageName strin
 	}
 
 	return nil
+}
+
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+    return ansiEscape.ReplaceAllString(s, "")
+}
+
+func vertexPhase(v *client.Vertex) string {
+    if v.Error != "" {
+        return "error"
+    }
+    if v.Completed != nil {
+        return "done"
+    }
+    if v.Started != nil {
+        return "running"
+    }
+    return "pending"
 }
