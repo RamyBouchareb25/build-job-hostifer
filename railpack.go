@@ -196,8 +196,8 @@ func patchRailpackPlanRunAsUser(srcDir string, log *zap.Logger) error {
 	}
 
 	chownCmd := map[string]interface{}{
-		"cmd":        `sh -lc 'for d in /app/tmp /app/.cache /app/.next /app/logs /app/storage /app/uploads /app/var; do if [ -e "$d" ]; then chown -R 1000:1000 "$d"; fi; done'`,
-		"customName": "set ownership for uid 1000 runtime paths",
+		"cmd":        "chown -R 1000:1000 /app",
+		"customName": "set ownership to uid 1000",
 	}
 
 	steps, _ := plan["steps"].([]interface{})
