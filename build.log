@@ -1,0 +1,198 @@
+17:58:27
+build
+build started
+17:58:27
+git
+Cloning into '/tmp/build'...
+17:58:27
+build
+clone complete
+17:58:27
+railpack
+patching railpack plan to run as uid 1000
+17:58:27
+railpack
+patched railpack plan
+17:58:27
+build
+framework detected
+17:58:27
+buildkit
+pushing image
+17:58:27
+buildkit
+▶ resolve image config for docker-image://ghcr.io/railwayapp/railpack-frontend:v0.18.0
+17:58:27
+buildkit
+▶ resolve image config for docker-image://ghcr.io/railwayapp/railpack-frontend:v0.18.0
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-frontend:v0.18.0@sha256:b940d7d39a72196ba30bce0c4aa75b4c388359aa0fca5df082279e80039ff1b2
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-frontend:v0.18.0@sha256:b940d7d39a72196ba30bce0c4aa75b4c388359aa0fca5df082279e80039ff1b2
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-frontend:v0.18.0@sha256:b940d7d39a72196ba30bce0c4aa75b4c388359aa0fca5df082279e80039ff1b2
+17:58:27
+buildkit
+▶ load build definition from railpack-plan.json
+17:58:27
+buildkit
+▶ load build definition from railpack-plan.json
+17:58:27
+buildkit
+▶ load build definition from railpack-plan.json
+17:58:27
+buildkit
+▶ load build definition from railpack-plan.json
+17:58:27
+buildkit
+▶ copy /root/.local/state/mise
+17:58:27
+buildkit
+▶ copy /etc/mise/config.toml
+17:58:27
+buildkit
+▶ copy /usr/local/bin/mise
+17:58:27
+buildkit
+▶ copy /mise/installs
+17:58:27
+buildkit
+▶ copy /mise/shims
+17:58:27
+buildkit
+▶ install mise packages: node
+17:58:27
+buildkit
+▶ create mise config
+17:58:27
+buildkit
+▶ mkdir /etc/mise
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.3.17
+17:58:27
+buildkit
+▶ install apt packages: libatomic1
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.3.17
+17:58:27
+buildkit
+▶ copy /root/.yarn
+17:58:27
+buildkit
+▶ copy /app/.yarn
+17:58:27
+buildkit
+▶ yarn install --check-cache
+17:58:27
+buildkit
+▶ copy yarn.lock
+17:58:27
+buildkit
+▶ [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+17:58:27
+buildkit
+▶ copy /root/.cache
+17:58:27
+buildkit
+▶ copy /opt/corepack
+17:58:27
+buildkit
+▶ copy .yarnrc.yml
+17:58:27
+buildkit
+▶ mkdir -p /app/node_modules/.cache
+17:58:27
+buildkit
+▶ npm i -g corepack@latest && corepack enable && corepack prepare --activate
+17:58:27
+buildkit
+▶ copy package.json
+17:58:27
+buildkit
+▶ copy /app/node_modules
+17:58:27
+buildkit
+▶ copy /app
+17:58:27
+buildkit
+▶ copy package.json
+17:58:27
+buildkit
+▶ set ownership to uid 1000
+17:58:27
+buildkit
+▶ loading .
+17:58:27
+buildkit
+▶ copy / /app
+17:58:27
+buildkit
+▶ loading .
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.3.17
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.3.17
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-runtime:mise-2026.3.17
+17:58:27
+buildkit
+▶ docker-image://ghcr.io/railwayapp/railpack-builder:mise-2026.3.17
+17:58:27
+buildkit
+▶ loading .
+17:58:27
+buildkit
+▶ loading .
+17:58:27
+buildkit
+▶ copy / /app
+17:58:27
+buildkit
+▶ copy / /app
+17:58:27
+buildkit
+▶ set ownership to uid 1000
+18:01:01
+buildkit
+▶ set ownership to uid 1000
+18:01:08
+buildkit
+▶ copy /app
+18:01:08
+buildkit
+▶ copy /app
+18:01:09
+buildkit
+▶ copy /opt/corepack
+18:01:09
+buildkit
+▶ copy /opt/corepack
+18:01:09
+buildkit
+▶ [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+18:01:09
+buildkit
+▶ [railpack] merge $packages:apt:runtime, $packages:mise, $build, $build
+18:01:09
+buildkit
+▶ exporting to image
+18:01:09
+buildkit
+▶ exporting to image
+18:01:09
+buildkit
+▶ exporting to image
+18:01:09
+buildkit
+▶ exporting to image
+18:01:09
+build
+build complete

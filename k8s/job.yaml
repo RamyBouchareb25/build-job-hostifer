@@ -18,6 +18,13 @@ spec:
       containers:
         - name: builder
           image: ghcr.io/ramybouchareb25/hostifer-build:latest
+          env:
+            - name: MEMORY_LIMIT_MB
+              valueFrom:
+                resourceFieldRef:
+                  containerName: main
+                  resource: limits.memory
+                  divisor: "1Mi"
           envFrom:
             - configMapRef:
                 name: build-config

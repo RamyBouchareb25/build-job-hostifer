@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
@@ -19,6 +20,7 @@ const (
 	railpackPlanFileName   = "railpack-plan.json"
 	railpackInfoFileName   = "railpack-info.json"
 	maxRailpackOutputBytes = 4 * 1024
+	defaultNodeMemoryMb    = 768
 )
 
 func railpackVersion() string {
@@ -134,6 +136,33 @@ func logRailpackOutput(output []byte, log *zap.Logger) {
 	}
 }
 
+func injectNodeMemoryFlag(cmd string, limitMb int) string {
+	// Set Node heap to 80% of container limit so GC kicks in before OOM.
+	heapMb := int(float64(limitMb) * 0.80)
+	flag := fmt.Sprintf("--max-old-space-size=%d", heapMb)
+
+	// Handle: node server.js -> node --max-old-space-size=204 server.js
+	if strings.HasPrefix(cmd, "node ") {
+		return strings.Replace(cmd, "node ", fmt.Sprintf("node %s ", flag), 1)
+	}
+	// Handle: npm start / npm run start -> NODE_OPTIONS=... npm start
+	return fmt.Sprintf("NODE_OPTIONS='%s' %s", "--max-old-space-size="+strconv.Itoa(heapMb), cmd)
+}
+
+func nodeMemoryLimitMb() int {
+	raw := strings.TrimSpace(os.Getenv("MEMORY_LIMIT_MB"))
+	if raw == "" {
+		return defaultNodeMemoryMb
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return defaultNodeMemoryMb
+	}
+
+	return parsed
+}
+
 func patchRailpackPlanRunAsUser(srcDir string, log *zap.Logger) error {
 	planPath := filepath.Join(srcDir, railpackPlanFileName)
 	log.Info("patching railpack plan to run as uid 1000",
@@ -157,12 +186,24 @@ func patchRailpackPlanRunAsUser(srcDir string, log *zap.Logger) error {
 	}
 	deploy["user"] = "1000"
 
-	steps, ok := plan["steps"].([]interface{})
-	if !ok {
-		return fmt.Errorf("patch railpack plan: missing or invalid steps section")
+	memoryLimitMb := nodeMemoryLimitMb()
+	if startCmd, exists := deploy["startCommand"].(string); exists {
+		// Inject memory limit slightly below the container limit so Node.js
+		// manages its own heap before the kernel OOM killer hits.
+		if strings.Contains(startCmd, "node") || strings.Contains(startCmd, "npm") || strings.Contains(startCmd, "yarn") {
+			deploy["startCommand"] = injectNodeMemoryFlag(startCmd, memoryLimitMb)
+		}
 	}
 
-	buildStepFound := false
+	chownCmd := map[string]interface{}{
+		"cmd":        `sh -lc 'for d in /app /app/tmp /app/.cache /app/.next /app/logs /app/storage /app/uploads /app/var; do [ -e "$d" ] && chown -R 1000:1000 "$d"; done'`,
+		"customName": "set ownership for uid 1000 runtime paths",
+	}
+
+	steps, _ := plan["steps"].([]interface{})
+	inserted := false
+
+	// Prefer a dedicated build step when available.
 	for _, s := range steps {
 		step, ok := s.(map[string]interface{})
 		if !ok {
@@ -176,19 +217,39 @@ func patchRailpackPlanRunAsUser(srcDir string, log *zap.Logger) error {
 
 		cmds, ok := step["commands"].([]interface{})
 		if !ok {
-			return fmt.Errorf("patch railpack plan: build step missing or invalid commands")
+			cmds = []interface{}{}
 		}
-
-		step["commands"] = append(cmds, map[string]interface{}{
-			"cmd":        "chown -R 1000:1000 /app",
-			"customName": "set ownership to uid 1000",
-		})
-		buildStepFound = true
+		step["commands"] = append(cmds, chownCmd)
+		inserted = true
 		break
 	}
 
-	if !buildStepFound {
-		return fmt.Errorf("patch railpack plan: build step not found")
+	// If there is no build step, append to the last step that supports commands.
+	if !inserted {
+		for i := len(steps) - 1; i >= 0; i-- {
+			step, ok := steps[i].(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			cmds, ok := step["commands"].([]interface{})
+			if !ok {
+				continue
+			}
+
+			step["commands"] = append(cmds, chownCmd)
+			inserted = true
+			break
+		}
+	}
+
+	// Final fallback for plans without a conventional command-bearing step.
+	if !inserted {
+		steps = append(steps, map[string]interface{}{
+			"name":     "hostifer-permissions",
+			"commands": []interface{}{chownCmd},
+		})
+		plan["steps"] = steps
 	}
 
 	patched, err := json.Marshal(plan)
